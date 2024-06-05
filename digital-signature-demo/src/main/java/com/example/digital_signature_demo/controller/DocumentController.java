@@ -18,4 +18,11 @@ public class DocumentController {
         byte[] documentContent = file.getBytes();
         return documentService.signDocument(documentContent);
     }
+
+    @PostMapping("/verify")
+    public String verifyDocument(@RequestParam("documentId") Long documentId, @RequestParam("file") MultipartFile file) throws IOException {
+        byte[] documentContent = file.getBytes();
+        boolean isVerified = documentService.verifyDocument(documentId, documentContent);
+        return isVerified ? "Document is verified and not tampered with." : "Document is tampered with or invalid.";
+    }
 }
