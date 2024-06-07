@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>Document Signing</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
 </head>
 <body>
     <h1>Upload Document to Sign</h1>
@@ -9,7 +10,7 @@
         <input type="file" id="fileInput" required />
         <button type="submit">Sign Document</button>
     </form>
-    <a id="downloadLink" style="display:none;">Download Private Key</a>
+    <a id="downloadLink" style="display:none;">Download Signed Document</a>
     <br>
     <a href="verify.html">Go to Verify Document</a>
 
@@ -21,16 +22,17 @@
             let formData = new FormData();
             formData.append('file', fileInput.files[0]);
 
-            let response = await fetch('/api/documents/sign', {
+            let response = await fetch('/documents/sign', {
                 method: 'POST',
                 body: formData
             });
 
             if (response.ok) {
-                let privateKey = await response.text();
+                let signedDocumentBlob = await response.blob();
                 let downloadLink = document.getElementById('downloadLink');
-                downloadLink.href = 'data:text/plain;base64,' + privateKey;
-                downloadLink.download = 'privateKey.txt';
+                let url = URL.createObjectURL(signedDocumentBlob);
+                downloadLink.href = url;
+                downloadLink.download = 'signed_document.pdf';
                 downloadLink.style.display = 'block';
             } else {
                 alert('Failed to sign document');

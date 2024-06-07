@@ -2,29 +2,27 @@
 <html>
 <head>
     <title>Document Verification</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
 </head>
 <body>
     <h1>Upload Document to Verify</h1>
     <form id="verifyForm">
         <input type="file" id="fileInput" required />
-        <input type="text" id="documentId" placeholder="Document ID" required />
         <button type="submit">Verify Document</button>
     </form>
     <p id="verificationResult"></p>
     <br>
-    <a href="sign.html">Go to Sign Document</a>
+    <a href="index.html">Go to Sign Document</a>
 
     <script>
         document.getElementById('verifyForm').addEventListener('submit', async function(event) {
             event.preventDefault();
 
             let fileInput = document.getElementById('fileInput');
-            let documentId = document.getElementById('documentId').value;
             let formData = new FormData();
             formData.append('file', fileInput.files[0]);
-            formData.append('documentId', documentId);
 
-            let response = await fetch('/api/documents/verify', {
+            let response = await fetch('/documents/verify', {
                 method: 'POST',
                 body: formData
             });

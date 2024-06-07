@@ -15,7 +15,7 @@ public class Document {
     @Lob
     private byte[] signature;
 
-    private String publicKey;
+    private byte[] publicKey;
 
     // Getters and setters
     public Long getId() {
@@ -34,11 +34,11 @@ public class Document {
         this.signature = signature;
     }
 
-    public String getPublicKey() {
+    public byte[] getPublicKey() {
         return publicKey;
     }
 
-    public void setPublicKey(String publicKey) {
+    public void setPublicKey(byte[] publicKey) {
         this.publicKey = publicKey;
     }
 }
