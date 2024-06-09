@@ -24,7 +24,8 @@ import net.thiim.dilithium.impl.PackingUtils;
 import net.thiim.dilithium.impl.Dilithium;
 import net.thiim.dilithium.interfaces.DilithiumPrivateKey;
 import net.thiim.dilithium.interfaces.DilithiumPublicKey;
-
+import net.thiim.dilithium.provider.DilithiumProvider;
+import com.example.digital_signature_demo.model.User;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -34,7 +35,7 @@ import java.security.Security;
 import java.util.Optional;
 import java.util.Map;
 import java.util.HashMap;
-
+import java.util.Date;
 import javax.imageio.ImageIO;
 
 @Service
@@ -45,96 +46,98 @@ public class DocumentService {
     @Autowired
     private DocumentRepository documentRepository;
 
+    @Autowired
+    private UserService userService;
+
     static {
-        // Đăng ký DilithiumProvider
         Security.addProvider(new DilithiumProvider());
     }
 
-    public byte[] signDocument(byte[] documentContent) {
-        try {
-            // Tạo cặp khóa
-            SecureRandom random = new SecureRandom();
-            byte[] seed = new byte[32]; // Kích thước hạt giống là 32 bytes
-            random.nextBytes(seed);
-            DilithiumParameterSpec params = DilithiumParameterSpec.LEVEL3; // Sử dụng thông số LEVEL3
-            KeyPair keyPair = Dilithium.generateKeyPair(params, seed);
+    public byte[] signDocument(byte[] documentContent, User user) {
+    try {
+        DilithiumPrivateKey privateKey = (DilithiumPrivateKey) PackingUtils.unpackPrivateKey(DilithiumParameterSpec.LEVEL5, user.getPrivateKey());
+        DilithiumPublicKey publicKey = (DilithiumPublicKey) PackingUtils.unpackPublicKey(DilithiumParameterSpec.LEVEL5, user.getPublicKey());
 
-            // Lưu thông tin tài liệu tạm thời vào cơ sở dữ liệu để lấy ID
-            Document document = new Document();
-            document.setPublicKey(keyPair.getPublic().getEncoded());
-            documentRepository.save(document);
+        // Tạo nội dung cho mã QR chứa documentId
+        Document document = new Document();
+        document.setUser(user);
+        document.setPublicKey(user.getPublicKey());  // Lưu khóa công khai vào document
+        documentRepository.save(document);
+        String qrContent = "Document ID: " + document.getId();
 
-            // Tạo nội dung cho mã QR chứa documentId
-            String qrContent = "Document ID: " + document.getId();
+        // Tạo mã QR
+        ByteArrayOutputStream qrOutputStream = new ByteArrayOutputStream();
+        generateQRCodeImage(qrContent, 100, 100, qrOutputStream); // Tăng kích thước mã QR để đảm bảo rõ ràng
+        byte[] qrImage = qrOutputStream.toByteArray();
 
-            // Tạo mã QR
-            ByteArrayOutputStream qrOutputStream = new ByteArrayOutputStream();
-            generateQRCodeImage(qrContent, 100, 100, qrOutputStream); // Tăng kích thước mã QR để đảm bảo rõ ràng
-            byte[] qrImage = qrOutputStream.toByteArray();
+        // Tạo tệp PDF với mã QR
+        PDDocument pdfDocument = PDDocument.load(documentContent);
+        PDPage lastPage = pdfDocument.getPage(pdfDocument.getNumberOfPages() - 1);
+        PDPageContentStream contentStream = new PDPageContentStream(pdfDocument, lastPage, PDPageContentStream.AppendMode.APPEND, true, true);
 
-            // Tạo tệp PDF với mã QR
-            PDDocument pdfDocument = PDDocument.load(documentContent);
-            PDPage lastPage = pdfDocument.getPage(pdfDocument.getNumberOfPages() - 1);
-            PDPageContentStream contentStream = new PDPageContentStream(pdfDocument, lastPage, PDPageContentStream.AppendMode.APPEND, true, true);
+        // Viết mã QR vào trang cuối của tài liệu PDF
+        PDImageXObject pdImage = PDImageXObject.createFromByteArray(pdfDocument, qrImage, "QR");
+        contentStream.drawImage(pdImage, 50, 70, 100, 100); // Đặt mã QR tại vị trí dễ nhận dạng hơn
+        contentStream.close();
 
-            // Viết mã QR vào trang cuối của tài liệu PDF
-            PDImageXObject pdImage = PDImageXObject.createFromByteArray(pdfDocument, qrImage, "QR");
-            contentStream.drawImage(pdImage, 50, 70, 100, 100); // Đặt mã QR tại vị trí dễ nhận dạng hơn
-            contentStream.close();
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        pdfDocument.save(outputStream);
+        pdfDocument.close();
 
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            pdfDocument.save(outputStream);
-            pdfDocument.close();
+        byte[] pdfWithQR = outputStream.toByteArray();
 
-            byte[] pdfWithQR = outputStream.toByteArray();
+        // Ký lại tài liệu PDF với mã QR
+        byte[] signature = Dilithium.sign(privateKey, pdfWithQR);
 
-            // Ký lại tài liệu PDF với mã QR
-            DilithiumPrivateKey privateKey = (DilithiumPrivateKey) keyPair.getPrivate();
-            byte[] signature = Dilithium.sign(privateKey, pdfWithQR);
+        // Cập nhật chữ ký trong cơ sở dữ liệu
+        document.setSignature(signature);
+        document.setSignDate(new Date());
+        documentRepository.save(document);
 
-            // Cập nhật chữ ký trong cơ sở dữ liệu
-            document.setSignature(signature);
-            documentRepository.save(document);
-
-            return pdfWithQR;
-        } catch (Exception e) {
-            logger.error("Lỗi khi ký tài liệu", e);
-            throw new RuntimeException("Lỗi khi ký tài liệu", e);
-        }
+        return pdfWithQR;
+    } catch (Exception e) {
+        logger.error("Lỗi khi ký tài liệu", e);
+        throw new RuntimeException("Lỗi khi ký tài liệu", e);
+    }
     }
 
-    public boolean verifyDocument(byte[] signedDocumentContent) {
-        try {
-            // Đọc nội dung PDF và mã QR để lấy documentId
-            PDDocument pdfDocument = PDDocument.load(signedDocumentContent);
-            String qrContent = extractQRCodeContentFromLastPage(pdfDocument);
-            pdfDocument.close();
 
-            // Phân tích nội dung QR
-            String documentIdStr = qrContent.split(": ")[1];
-            Long documentId = Long.parseLong(documentIdStr);
+    public Map<String, Object> verifyDocument(byte[] signedDocumentContent) {
+    try {
+        // Đọc nội dung PDF và mã QR để lấy documentId
+        PDDocument pdfDocument = PDDocument.load(signedDocumentContent);
+        String qrContent = extractQRCodeContentFromLastPage(pdfDocument);
+        pdfDocument.close();
 
-            // Lấy tài liệu từ cơ sở dữ liệu
-            Document document = documentRepository.findById(documentId)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy tài liệu"));
+        // Phân tích nội dung QR
+        String documentIdStr = qrContent.split(": ")[1];
+        Long documentId = Long.parseLong(documentIdStr);
 
-            // Giải mã khóa công khai
-            byte[] publicKeyBytes = document.getPublicKey();
-            DilithiumPublicKey publicKey = (DilithiumPublicKey) PackingUtils.unpackPublicKey(DilithiumParameterSpec.LEVEL3, publicKeyBytes);
+        // Lấy tài liệu từ cơ sở dữ liệu
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy tài liệu"));
 
-            // Xác thực nội dung tài liệu đã ký
-            boolean isVerified = Dilithium.verify(publicKey, document.getSignature(), signedDocumentContent);
-            if (isVerified) {
-                logger.info("Tài liệu được xác thực thành công.");
-            } else {
-                logger.warn("Xác thực tài liệu thất bại.");
-            }
-            return isVerified;
-        } catch (Exception e) {
-            logger.error("Lỗi khi xác thực tài liệu", e);
-            throw new RuntimeException("Lỗi khi xác thực tài liệu", e);
+        // Giải mã khóa công khai
+        byte[] publicKeyBytes = document.getPublicKey();
+        DilithiumPublicKey publicKey = (DilithiumPublicKey) PackingUtils.unpackPublicKey(DilithiumParameterSpec.LEVEL5, publicKeyBytes);
+
+        // Xác thực nội dung tài liệu đã ký
+        boolean isVerified = Dilithium.verify(publicKey, document.getSignature(), signedDocumentContent);
+        Map<String, Object> result = new HashMap<>();
+        result.put("isVerified", isVerified);
+        if (isVerified) {
+            result.put("signDate", document.getSignDate());
+            result.put("signedBy", document.getUser().getUsername());
+            logger.info("Tài liệu được xác thực thành công.");
+        } else {
+            logger.warn("Xác thực tài liệu thất bại.");
         }
+        return result;
+    } catch (Exception e) {
+        logger.error("Lỗi khi xác thực tài liệu", e);
+        throw new RuntimeException("Lỗi khi xác thực tài liệu", e);
     }
+}
 
     private void generateQRCodeImage(String text, int width, int height, ByteArrayOutputStream outputStream) throws Exception {
         QRCodeWriter qrCodeWriter = new QRCodeWriter();

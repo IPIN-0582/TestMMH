@@ -1,10 +1,7 @@
 package com.example.digital_signature_demo.model;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.Lob;
+import javax.persistence.*;
+import java.util.Date;
 
 @Entity
 public class Document {
@@ -15,7 +12,14 @@ public class Document {
     @Lob
     private byte[] signature;
 
+    @Lob
     private byte[] publicKey;
+
+    @ManyToOne
+    @JoinColumn(name = "user_id")
+    private User user;
+
+    private Date signDate;
 
     // Getters and setters
     public Long getId() {
@@ -40,5 +44,21 @@ public class Document {
 
     public void setPublicKey(byte[] publicKey) {
         this.publicKey = publicKey;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
+    }
+
+    public Date getSignDate() {
+        return signDate;
+    }
+
+    public void setSignDate(Date signDate) {
+        this.signDate = signDate;
     }
 }

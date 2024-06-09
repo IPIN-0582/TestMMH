@@ -11,6 +11,8 @@
         <button type="submit">Verify Document</button>
     </form>
     <p id="verificationResult"></p>
+    <p id="signDate"></p>
+    <p id="signedBy"></p>
     <br>
     <a href="index.html">Go to Sign Document</a>
 
@@ -28,9 +30,20 @@
             });
 
             let verificationResult = document.getElementById('verificationResult');
+            let signDate = document.getElementById('signDate');
+            let signedBy = document.getElementById('signedBy');
+
             if (response.ok) {
-                let resultText = await response.text();
-                verificationResult.textContent = resultText;
+                let result = await response.json();
+                if (result.isVerified) {
+                    verificationResult.textContent = 'Document is valid';
+                    signDate.textContent = 'Sign Date: ' + new Date(result.signDate).toLocaleString();
+                    signedBy.textContent = 'Signed By: ' + result.signedBy;
+                } else {
+                    verificationResult.textContent = 'Document is invalid';
+                    signDate.textContent = '';
+                    signedBy.textContent = '';
+                }
             } else {
                 verificationResult.textContent = 'Failed to verify document';
             }
